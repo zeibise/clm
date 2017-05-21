@@ -1,0 +1,76 @@
+---
+title: "Machine learning project"
+author: "Henry"
+date: "21 May 2017"
+output: html_document
+---
+## Summary
+We want to predict qualitative performance of certain exercises recorded by physical activity recording devices. We will use a machine learning algorithm to do the prediction.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+traindata<-read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', na.strings=c("NA","","#DIV/0!"))
+testdata<-read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', na.strings=c("NA","","#DIV/0!"))
+```
+## Data exploration
+Looking at the data we see there are many possible pitfalls for a machine learning algorithm. For example, the index variable $X$ explains the classe perfectly. 
+```{r}
+library(ggplot2)
+ggplot(traindata, aes(x=classe, y=X, colour=classe))+geom_point()
+# Example 1. The variable X predicts the classe perfectly. To avoid the machine learning from finding this detrimental pattern, we shouldn't use X in the prediction at all.
+```
+
+```{r}
+library(caret)
+library(AppliedPredictiveModeling)
+library(rpart)
+b<-colSums(is.na(traindata))
+#b (Omitted to save space)
+a<-rowSums(is.na(traindata))
+qqnorm(a)
+```
+
+Furthermore, by reading the qqnorm plot cleverly, we can see that approx 98% of the data rows have a whopping 100 NA values, and the column sums tell us that this is caused by a certain set of columns.
+
+
+### Data cleaning
+
+We can ameliorate the situation by excluding the columns that have lots of NA values. More concretely, we will drop the variables that are least 80% NA. We also remove the user name and the index variables. We'll naturally need to perform the same treatment for both the test set and training set.
+```{r}
+removedcolumns<-names(traindata[ lapply( traindata, function(x) sum(is.na(x)) / length(x) ) > 0.8 ])
+tidytrain <- traindata[,-which(names(traindata) %in% removedcolumns)]
+tidytrain <- tidytrain[-c(1,2)]
+tidytest <- testdata[,-which(names(testdata) %in% removedcolumns)]
+tidytest <- tidytest[-c(1,2)]
+```
+
+## Building the model
+
+We'll use a classification tree model to predict the outcome. This kind of model is well-suited for predicting qualitative data. Another strong candidate would be the neural network, but these are not discussed too much on this course so let's forget about those.
+
+### Considerations
+
+The author is using older hardware, and we saw that the algorithms from caret package refused to run, crashing the computer repeatedly. We found out that the rpart package is much more doable for this poor old machine, so we ended up using that package.
+
+We have a lot of data available, so we don't need to be particularly parsimonious. We'll just split the data into 6:4 training and test sets, and forget about the cross validation. Even if it means tossing away 40% of the training material, we have enough data to make a good model. We'll look at the predictions metrics for in and out sample cases.
+```{r}
+set.seed(71551)
+inTrain = createDataPartition(tidytrain$classe, p = 6/10)[[1]]
+training = tidytrain[inTrain,]
+testing = tidytrain[-inTrain,]
+md1 <- rpart(classe ~ ., data=training, method="class")
+pred0 <- predict(md1, training, type = "class")
+pred1 <- predict(md1, testing, type = "class")
+pred2 <- predict(md1, tidytest, type="class")
+cm0 <- confusionMatrix(pred0, training$classe)
+cm1 <- confusionMatrix(pred1, testing$classe)
+cm0
+cm1
+
+```
+
+## Results
+Our in sample accuracy is 88.9%, and out sample accuracy is 87.4%. These being roughly equal means that we did a good job on cleaning the data (no overfit), and the strong prediction power says we still were left with enough data to make accurate predictions.
+
+There is no reason to believe that we should perform any worse in the quiz. We should be able to get at least 85% score on it. Indeed, the performance in the prediction quiz was 90%.
